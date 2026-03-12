@@ -33,9 +33,12 @@ BACKTEST_CONFIG = {
 
 # Proxy ETFs for assets that didn't exist in early years
 # These will be used before the actual ETF was available
+# Format: 'ETF': 'PROXY' (proxy data used before ETF inception)
 PROXY_MAPPING = {
-    'ASHR': 'FXI',   # China large-cap ETF (available since 2004)
-    'GLD': 'GC=F',   # Gold futures (available since 1970s)
+    'QQQ': '^NDX',       # Nasdaq 100 index (available since 1985)
+    'ASHR': 'FXI',       # China large-cap ETF (available since 2004) - best proxy for China A-shares
+    'VIG': 'VTI',        # Total US stock market (available since 2001, close proxy for dividend stocks)
+    'GLD': 'GC=F',       # Gold futures (available since 1970s)
 }
 
 # Risk-free rate for Sharpe/Sortino calculations (annualized)

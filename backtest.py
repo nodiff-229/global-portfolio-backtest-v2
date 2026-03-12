@@ -73,7 +73,7 @@ class PortfolioBacktest:
             print(f"Fetching data from {self.start_date} to {self.end_date}...")
 
         # Fetch data for all tickers
-        data = df.get_all_etf_data(self.tickers, self.start_date, self.end_date)
+        data = df.get_all_etf_data(self.tickers, self.start_date, self.end_date, verbose=verbose)
 
         # Extract adjusted close prices
         self.prices = df.get_adj_close_prices(data)
@@ -82,8 +82,26 @@ class PortfolioBacktest:
         self.monthly_prices = df.resample_monthly(self.prices)
 
         if verbose:
-            print(f"Data range: {self.monthly_prices.index.min()} to {self.monthly_prices.index.max()}")
+            print(f"\nData range: {self.monthly_prices.index.min()} to {self.monthly_prices.index.max()}")
             print(f"Tickers available: {list(self.monthly_prices.columns)}")
+            # Show data coverage for each ticker
+            print("\nData coverage by ticker:")
+            for ticker in self.tickers:
+                if ticker in self.monthly_prices.columns:
+                    ticker_data = self.monthly_prices[ticker].dropna()
+                    if len(ticker_data) > 0:
+                        first_date = ticker_data.index[0]
+                        last_date = ticker_data.index[-1]
+                        coverage = len(ticker_data) / len(self.monthly_prices) * 100
+                        # Check if proxy was used
+                        inception = config.ETF_INCEPTION.get(ticker, '1990-01-01')
+                        proxy_used = ticker in config.PROXY_MAPPING and self.start_date < inception
+                        proxy_info = f" (proxy: {config.PROXY_MAPPING[ticker]})" if proxy_used else ""
+                        print(f"  {ticker}: {first_date.strftime('%Y-%m')} to {last_date.strftime('%Y-%m')} ({coverage:.0f}% coverage){proxy_info}")
+                    else:
+                        print(f"  {ticker}: No data available")
+                else:
+                    print(f"  {ticker}: Not in dataset")
 
         return self.monthly_prices
 
@@ -166,22 +184,58 @@ class PortfolioBacktest:
                 # Total value to allocate
                 total_value = portfolio_value + contribution
 
+                # Identify tickers with available data
+                available_tickers = [
+                    ticker for ticker in self.tickers
+                    if ticker in current_prices and not pd.isna(current_prices[ticker])
+                ]
+                missing_tickers = [t for t in self.tickers if t not in available_tickers]
+
+                # If some tickers are missing, redistribute their weights proportionally
+                if missing_tickers:
+                    available_weight = sum(self.allocation[t] for t in available_tickers)
+                    if available_weight > 0:
+                        # Redistribute weights proportionally
+                        adjusted_allocation = {
+                            t: self.allocation[t] / available_weight
+                            for t in available_tickers
+                        }
+                    else:
+                        adjusted_allocation = {t: 1.0 / len(available_tickers) for t in available_tickers}
+
+                    if i == 0 or date == self.monthly_prices.index[0]:
+                        # Log missing data at the start
+                        print(f"Warning: {date.strftime('%Y-%m')}: No data for {missing_tickers}, redistributing weights")
+                else:
+                    adjusted_allocation = self.allocation
+
                 # Calculate target allocations
-                target_values = {ticker: total_value * self.allocation[ticker] for ticker in self.tickers}
+                target_values = {
+                    ticker: total_value * adjusted_allocation.get(ticker, 0)
+                    for ticker in self.tickers
+                }
 
                 # Calculate new holdings
                 holdings = {}
                 for ticker in self.tickers:
-                    if ticker in current_prices and not pd.isna(current_prices[ticker]):
+                    if ticker in available_tickers:
                         holdings[ticker] = target_values[ticker] / current_prices[ticker]
                     else:
                         holdings[ticker] = 0.0
             else:
                 # Just add contribution proportionally to target weights
+                # Only add to tickers with available data
                 if contribution > 0:
-                    for ticker in self.tickers:
-                        if ticker in current_prices and not pd.isna(current_prices[ticker]):
-                            shares_to_buy = (contribution * self.allocation[ticker]) / current_prices[ticker]
+                    available_tickers = [
+                        ticker for ticker in self.tickers
+                        if ticker in current_prices and not pd.isna(current_prices[ticker])
+                    ]
+                    if available_tickers:
+                        available_weight = sum(self.allocation[t] for t in available_tickers)
+                        for ticker in available_tickers:
+                            # Redistribute weight proportionally
+                            adjusted_weight = self.allocation[ticker] / available_weight
+                            shares_to_buy = (contribution * adjusted_weight) / current_prices[ticker]
                             holdings[ticker] = holdings.get(ticker, 0) + shares_to_buy
 
             # Calculate final portfolio value for this month

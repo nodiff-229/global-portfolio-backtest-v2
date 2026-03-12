@@ -14,7 +14,8 @@ def get_etf_data(
     ticker: str,
     start_date: str,
     end_date: Optional[str] = None,
-    use_proxy: bool = True
+    use_proxy: bool = True,
+    verbose: bool = True
 ) -> pd.DataFrame:
     """
     Fetch ETF price data from Yahoo Finance
@@ -24,6 +25,7 @@ def get_etf_data(
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD), defaults to today
         use_proxy: Whether to use proxy for unavailable periods
+        verbose: Print proxy usage information
 
     Returns:
         DataFrame with OHLCV data
@@ -36,6 +38,9 @@ def get_etf_data(
     # Check if we need a proxy (only if start_date is before ETF inception)
     if use_proxy and ticker in config.PROXY_MAPPING and start_date < inception:
         proxy_ticker = config.PROXY_MAPPING[ticker]
+
+        if verbose:
+            print(f"  {ticker}: Using proxy {proxy_ticker} for period {start_date} to {inception}")
 
         # Fetch proxy data for early period (before ETF existed)
         proxy_data = yf.download(
@@ -66,11 +71,21 @@ def get_etf_data(
             # Use proxy for early period, actual for later
             combined = pd.concat([proxy_data, actual_data])
             combined = combined[~combined.index.duplicated(keep='last')]
+            if verbose:
+                print(f"  {ticker}: Combined {len(proxy_data)} proxy rows + {len(actual_data)} actual rows")
             return combined
         elif not actual_data.empty:
+            if verbose:
+                print(f"  {ticker}: No proxy data available, using actual data only ({len(actual_data)} rows)")
             return actual_data
-        else:
+        elif not proxy_data.empty:
+            if verbose:
+                print(f"  {ticker}: No actual data available, using proxy only ({len(proxy_data)} rows)")
             return proxy_data
+        else:
+            if verbose:
+                print(f"  {ticker}: Warning - No data available from either source")
+            return pd.DataFrame()
 
     # Direct download (no proxy needed or start date is after inception)
     data = yf.download(ticker, start=start_date, end=end_date, progress=False)
@@ -79,13 +94,17 @@ def get_etf_data(
     if isinstance(data.columns, pd.MultiIndex):
         data.columns = data.columns.get_level_values(0)
 
+    if verbose and not data.empty:
+        print(f"  {ticker}: Fetched {len(data)} rows (direct, no proxy needed)")
+
     return data
 
 
 def get_all_etf_data(
     tickers: List[str],
     start_date: str,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    verbose: bool = True
 ) -> Dict[str, pd.DataFrame]:
     """
     Fetch data for multiple ETFs
@@ -94,18 +113,21 @@ def get_all_etf_data(
         tickers: List of ticker symbols
         start_date: Start date (YYYY-MM-DD)
         end_date: End date (YYYY-MM-DD)
+        verbose: Print proxy usage information
 
     Returns:
         Dictionary mapping tickers to DataFrames
     """
     data = {}
     for ticker in tickers:
-        print(f"Fetching {ticker}...")
-        df = get_etf_data(ticker, start_date, end_date)
+        if verbose:
+            print(f"Fetching {ticker}...")
+        df = get_etf_data(ticker, start_date, end_date, verbose=verbose)
         if not df.empty:
             data[ticker] = df
         else:
-            print(f"Warning: No data retrieved for {ticker}")
+            if verbose:
+                print(f"  Warning: No data retrieved for {ticker}")
     return data
 
 
