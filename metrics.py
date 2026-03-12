@@ -311,10 +311,19 @@ def calculate_monthly_returns(portfolio_values: pd.Series) -> pd.DataFrame:
     pivot.columns = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-    # Add annual return
-    yearly = portfolio_values.resample('Y').last()
-    annual = yearly.pct_change().dropna()
-    pivot['Year'] = annual.values
+    # Add annual return - match the years correctly
+    yearly = portfolio_values.resample('YE').last()
+    annual = yearly.pct_change()
+    # Align years - annual has NaN for first year, pivot starts from first complete year
+    # Filter annual to match pivot's years
+    annual_aligned = annual.iloc[1:]  # Skip first NaN
+    # Ensure same length
+    if len(annual_aligned) > len(pivot):
+        annual_aligned = annual_aligned.iloc[:len(pivot)]
+    elif len(annual_aligned) < len(pivot):
+        pivot = pivot.iloc[:len(annual_aligned)]
+    
+    pivot['Year'] = annual_aligned.values
 
     return pivot
 
