@@ -33,18 +33,21 @@ def get_etf_data(
 
     inception = config.ETF_INCEPTION.get(ticker, '1990-01-01')
 
-    # Check if we need a proxy
-    if use_proxy and ticker in config.PROXY_MAPPING:
+    # Check if we need a proxy (only if start_date is before ETF inception)
+    if use_proxy and ticker in config.PROXY_MAPPING and start_date < inception:
         proxy_ticker = config.PROXY_MAPPING[ticker]
-        proxy_inception = config.ETF_INCEPTION.get(proxy_ticker, '1990-01-01')
 
-        # Fetch proxy data for early period
+        # Fetch proxy data for early period (before ETF existed)
         proxy_data = yf.download(
             proxy_ticker,
             start=start_date,
-            end=min(inception, end_date),
+            end=inception,
             progress=False
         )
+
+        # Flatten multi-level columns if present
+        if isinstance(proxy_data.columns, pd.MultiIndex):
+            proxy_data.columns = proxy_data.columns.get_level_values(0)
 
         # Fetch actual ETF data for later period
         actual_data = yf.download(
@@ -53,6 +56,10 @@ def get_etf_data(
             end=end_date,
             progress=False
         )
+
+        # Flatten multi-level columns if present
+        if isinstance(actual_data.columns, pd.MultiIndex):
+            actual_data.columns = actual_data.columns.get_level_values(0)
 
         # Combine data
         if not proxy_data.empty and not actual_data.empty:
@@ -65,8 +72,13 @@ def get_etf_data(
         else:
             return proxy_data
 
-    # Direct download
+    # Direct download (no proxy needed or start date is after inception)
     data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+
+    # Flatten multi-level columns if present
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
+
     return data
 
 
@@ -111,12 +123,28 @@ def get_adj_close_prices(
     """
     prices = {}
     for ticker, df in ticker_data.items():
+        if df.empty:
+            print(f"Warning: Empty data for {ticker}")
+            continue
+
+        # Handle both single-level and multi-level columns
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
         if 'Adj Close' in df.columns:
-            prices[ticker] = df['Adj Close']
+            series = df['Adj Close']
         elif 'Close' in df.columns:
-            prices[ticker] = df['Close']
+            series = df['Close']
         else:
             print(f"Warning: No close price found for {ticker}")
+            continue
+
+        # Only add non-empty series
+        if not series.empty:
+            prices[ticker] = series
+
+    if not prices:
+        return pd.DataFrame()
 
     return pd.DataFrame(prices)
 
@@ -131,7 +159,7 @@ def resample_monthly(prices: pd.DataFrame) -> pd.DataFrame:
     Returns:
         Monthly price DataFrame
     """
-    return prices.resample('M').last()
+    return prices.resample('ME').last()
 
 
 def calculate_returns(prices: pd.DataFrame) -> pd.DataFrame:

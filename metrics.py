@@ -269,7 +269,7 @@ def calculate_annual_returns(portfolio_values: pd.Series) -> pd.DataFrame:
         return pd.DataFrame()
 
     # Resample to year-end values
-    yearly = portfolio_values.resample('Y').last()
+    yearly = portfolio_values.resample('YE').last()
 
     # Calculate annual returns
     annual_returns = yearly.pct_change().dropna()
@@ -297,7 +297,7 @@ def calculate_monthly_returns(portfolio_values: pd.Series) -> pd.DataFrame:
         return pd.DataFrame()
 
     # Calculate monthly returns
-    monthly_returns = portfolio_values.resample('M').last().pct_change().dropna()
+    monthly_returns = portfolio_values.resample('ME').last().pct_change().dropna()
 
     # Create DataFrame with year and month
     df = pd.DataFrame({

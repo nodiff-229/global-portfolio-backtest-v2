@@ -35,7 +35,7 @@ BACKTEST_CONFIG = {
 # These will be used before the actual ETF was available
 PROXY_MAPPING = {
     'ASHR': 'FXI',   # China large-cap ETF (available since 2004)
-    'GLD': 'GLD',    # No good proxy, will use available data
+    'GLD': 'GC=F',   # Gold futures (available since 1970s)
 }
 
 # Risk-free rate for Sharpe/Sortino calculations (annualized)

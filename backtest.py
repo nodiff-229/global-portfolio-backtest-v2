@@ -252,6 +252,38 @@ class PortfolioBacktest:
 
         return metrics.calculate_monthly_returns(self.results['portfolio_value'])
 
+    def get_annual_capital_changes(self) -> pd.DataFrame:
+        """
+        Get annual capital changes table showing:
+        - Year
+        - Portfolio value at year end
+        - Cumulative contributions
+        - Cumulative returns (value - contributions)
+
+        Returns:
+            DataFrame with annual capital changes
+        """
+        if self.results is None:
+            raise ValueError("Run backtest first")
+
+        # Resample to year-end values
+        yearly_values = self.results['portfolio_value'].resample('YE').last()
+        yearly_contributions = self.results['total_contributions'].resample('YE').last()
+
+        # Create DataFrame
+        annual_changes = pd.DataFrame({
+            'Year': yearly_values.index.year,
+            'Portfolio_Value': yearly_values.values,
+            'Cumulative_Contributions': yearly_contributions.values
+        })
+
+        # Calculate cumulative returns
+        annual_changes['Cumulative_Returns'] = (
+            annual_changes['Portfolio_Value'] - annual_changes['Cumulative_Contributions']
+        )
+
+        return annual_changes
+
     def get_holdings_over_time(self) -> pd.DataFrame:
         """
         Get portfolio holdings over time (value per asset)

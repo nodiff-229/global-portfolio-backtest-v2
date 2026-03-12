@@ -163,6 +163,47 @@ def create_annual_returns_chart(annual_returns):
     return fig
 
 
+def create_annual_capital_changes_chart(annual_changes):
+    """Create annual capital changes stacked bar chart"""
+    fig = go.Figure()
+
+    # Cumulative Contributions
+    fig.add_trace(go.Bar(
+        x=annual_changes['Year'],
+        y=annual_changes['Cumulative_Contributions'],
+        name='Cumulative Contributions',
+        marker_color='#2ca02c',
+        hovertemplate='%{y:,.0f}<extra></extra>'
+    ))
+
+    # Cumulative Returns
+    fig.add_trace(go.Bar(
+        x=annual_changes['Year'],
+        y=annual_changes['Cumulative_Returns'],
+        name='Cumulative Returns',
+        marker_color='#1f77b4',
+        hovertemplate='%{y:,.0f}<extra></extra>'
+    ))
+
+    fig.update_layout(
+        title='Annual Capital Composition',
+        xaxis_title='Year',
+        yaxis_title='Value ($)',
+        barmode='stack',
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        height=500
+    )
+
+    return fig
+
+
 def create_monthly_returns_heatmap(monthly_returns):
     """Create monthly returns heatmap"""
     # Prepare data
@@ -343,8 +384,9 @@ def main():
         st.markdown("---")
 
         # Charts
-        tab1, tab2, tab3, tab4 = st.tabs([
+        tab1, tab2, tab3, tab4, tab5 = st.tabs([
             "📈 Portfolio Growth",
+            "💰 Annual Capital",
             "📊 Annual Returns",
             "🗓️ Monthly Returns",
             "📋 Details"
@@ -358,6 +400,29 @@ def main():
             st.plotly_chart(create_drawdown_chart(results), use_container_width=True)
 
         with tab2:
+            # Annual capital changes
+            annual_changes = backtest.get_annual_capital_changes()
+            st.plotly_chart(create_annual_capital_changes_chart(annual_changes), use_container_width=True)
+
+            # Annual capital changes table
+            st.subheader("Annual Capital Changes Table")
+            display_df = annual_changes.copy()
+            display_df['Portfolio_Value'] = display_df['Portfolio_Value'].apply(format_currency)
+            display_df['Cumulative_Contributions'] = display_df['Cumulative_Contributions'].apply(format_currency)
+            display_df['Cumulative_Returns'] = display_df['Cumulative_Returns'].apply(format_currency)
+
+            st.dataframe(
+                display_df.rename(columns={
+                    'Year': 'Year',
+                    'Portfolio_Value': 'Portfolio Value',
+                    'Cumulative_Contributions': 'Cumulative Contributions',
+                    'Cumulative_Returns': 'Cumulative Returns'
+                }),
+                use_container_width=True,
+                hide_index=True
+            )
+
+        with tab3:
             # Annual returns
             annual_returns = backtest.get_annual_returns()
             st.plotly_chart(create_annual_returns_chart(annual_returns), use_container_width=True)
@@ -374,7 +439,7 @@ def main():
                 hide_index=True
             )
 
-        with tab3:
+        with tab4:
             # Monthly returns heatmap
             monthly_returns = backtest.get_monthly_returns()
             st.plotly_chart(create_monthly_returns_heatmap(monthly_returns), use_container_width=True)
@@ -385,7 +450,7 @@ def main():
                 use_container_width=True
             )
 
-        with tab4:
+        with tab5:
             # Metrics table
             col1, col2 = st.columns(2)
 
