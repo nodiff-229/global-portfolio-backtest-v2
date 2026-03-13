@@ -276,8 +276,9 @@ class PortfolioBacktest:
 
         portfolio_values = self.results['portfolio_value']
         returns = portfolio_values.pct_change().dropna()
+        contributions = self.results['contribution']
 
-        m = metrics.calculate_all_metrics(portfolio_values, returns)
+        m = metrics.calculate_all_metrics(portfolio_values, returns, contributions)
         m['total_contributions'] = self.results['total_contributions'].iloc[-1]
 
         return m

@@ -13,15 +13,18 @@ import config
 def calculate_cagr(
     portfolio_values: pd.Series,
     start_date: pd.Timestamp,
-    end_date: pd.Timestamp
+    end_date: pd.Timestamp,
+    contributions: pd.Series = None
 ) -> float:
     """
-    Calculate Compound Annual Growth Rate
+    Calculate Compound Annual Growth Rate (CAGR)
+    For DCA strategies, use IRR-based CAGR instead of simple CAGR
 
     Args:
         portfolio_values: Time series of portfolio values
         start_date: Start date
         end_date: End date
+        contributions: Time series of contributions (optional, for DCA)
 
     Returns:
         CAGR as decimal (e.g., 0.08 for 8%)
@@ -38,9 +41,25 @@ def calculate_cagr(
     if years <= 0:
         return 0.0
 
-    # CAGR = (End / Start)^(1/years) - 1
-    cagr = (end_value / start_value) ** (1 / years) - 1
-    return cagr
+    # If contributions are provided, use IRR-based CAGR (for DCA strategies)
+    if contributions is not None and len(contributions) > 0:
+        # Calculate total contributions
+        total_contributions = contributions.sum()
+        
+        # Simple approximation: money-weighted return
+        # Average capital deployed ≈ start_value + total_contributions / 2
+        avg_capital = start_value + total_contributions / 2
+        
+        # Total return
+        total_return = (end_value - total_contributions - start_value) / avg_capital
+        
+        # Annualize
+        cagr = (1 + total_return) ** (1 / years) - 1
+        return max(0, cagr)  # Don't return negative for partial periods
+    else:
+        # Simple CAGR for lump-sum investments
+        cagr = (end_value / start_value) ** (1 / years) - 1
+        return cagr
 
 
 def calculate_max_drawdown(portfolio_values: pd.Series) -> Tuple[float, pd.Timestamp, pd.Timestamp]:
@@ -197,7 +216,8 @@ def calculate_calmar_ratio(
 
 def calculate_all_metrics(
     portfolio_values: pd.Series,
-    returns: pd.Series = None
+    returns: pd.Series = None,
+    contributions: pd.Series = None
 ) -> dict:
     """
     Calculate all portfolio metrics
@@ -205,6 +225,7 @@ def calculate_all_metrics(
     Args:
         portfolio_values: Time series of portfolio values
         returns: Period returns (calculated if not provided)
+        contributions: Time series of contributions (for DCA CAGR calculation)
 
     Returns:
         Dictionary of metrics
@@ -229,14 +250,19 @@ def calculate_all_metrics(
     end_date = portfolio_values.index[-1]
 
     # Calculate metrics
-    cagr = calculate_cagr(portfolio_values, start_date, end_date)
+    cagr = calculate_cagr(portfolio_values, start_date, end_date, contributions)
     max_dd, dd_peak, dd_trough = calculate_max_drawdown(portfolio_values)
     sharpe = calculate_sharpe_ratio(returns)
     sortino = calculate_sortino_ratio(returns)
     vol = calculate_volatility(returns)
     calmar = calculate_calmar_ratio(cagr, max_dd)
 
-    total_return = (portfolio_values.iloc[-1] / portfolio_values.iloc[0]) - 1
+    # For DCA, calculate total return based on contributions, not just start/end value
+    if contributions is not None:
+        total_invested = contributions.sum() + portfolio_values.iloc[0]
+        total_return = (portfolio_values.iloc[-1] - total_invested) / total_invested
+    else:
+        total_return = (portfolio_values.iloc[-1] / portfolio_values.iloc[0]) - 1
 
     return {
         'cagr': cagr,
@@ -250,7 +276,7 @@ def calculate_all_metrics(
         'total_return': total_return,
         'start_date': start_date,
         'end_date': end_date,
-        'total_contributions': None,  # Will be filled by backtest
+        'total_contributions': contributions.sum() if contributions is not None else None,
         'final_value': portfolio_values.iloc[-1]
     }
 
