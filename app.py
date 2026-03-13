@@ -22,7 +22,8 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 from datetime import datetime
 import importlib, sys, os
-# 启动时清除本地 __pycache__，防止 Streamlit Cloud 加载过期字节码
+
+# 强制清除所有可能的 Python 缓存，解决 Streamlit Cloud 模块缓存问题
 _cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '__pycache__')
 if os.path.isdir(_cache_dir):
     import shutil
@@ -30,7 +31,14 @@ if os.path.isdir(_cache_dir):
         shutil.rmtree(_cache_dir)
     except Exception:
         pass
+
+# 清除 sys.modules 中可能缓存的旧模块
+for mod_name in ['backtest', 'config']:
+    if mod_name in sys.modules:
+        del sys.modules[mod_name]
+
 importlib.invalidate_caches()
+
 import backtest as bt
 import config
 
