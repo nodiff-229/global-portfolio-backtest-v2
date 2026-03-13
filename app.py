@@ -21,6 +21,16 @@ import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
 from datetime import datetime
+import importlib, sys, os
+# 启动时清除本地 __pycache__，防止 Streamlit Cloud 加载过期字节码
+_cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '__pycache__')
+if os.path.isdir(_cache_dir):
+    import shutil
+    try:
+        shutil.rmtree(_cache_dir)
+    except Exception:
+        pass
+importlib.invalidate_caches()
 import backtest as bt
 import config
 
