@@ -198,7 +198,8 @@ class PortfolioBacktest:
         initial_capital: float = None,
         monthly_contribution: float = None,
         rebalance_frequency: str = None,
-        transaction_cost: float = 0.001  # 交易成本（买卖价差+佣金），默认0.1%
+        transaction_cost: float = 0.001,  # 交易成本（买卖价差+佣金），默认0.1%
+        management_fee: float = None      # 年度管理费率，默认使用config
     ):
         """
         初始化回测引擎
@@ -217,6 +218,7 @@ class PortfolioBacktest:
                 - 'annual': 每年（12月）
             transaction_cost: 交易成本（单边），默认0.1%
                               例如：买入$10000，成本$10
+            management_fee: 年度管理费率，默认0.65%（每月扣除年费率的1/12）
         """
         # 使用配置默认值
         self.allocation = allocation or config.PORTFOLIO_ALLOCATION.copy()
@@ -226,6 +228,7 @@ class PortfolioBacktest:
         self.monthly_contribution = monthly_contribution or config.BACKTEST_CONFIG['monthly_contribution']
         self.rebalance_frequency = rebalance_frequency or config.BACKTEST_CONFIG['rebalance_frequency']
         self.transaction_cost = transaction_cost
+        self.management_fee = management_fee if management_fee is not None else config.MANAGEMENT_FEE
 
         # 验证权重总和
         total_weight = sum(self.allocation.values())
@@ -351,6 +354,7 @@ class PortfolioBacktest:
             print(f"每月投入: ${self.monthly_contribution:,.0f}")
             print(f"再平衡频率: {self.rebalance_frequency}")
             print(f"交易成本: {self.transaction_cost*100:.2f}%")
+            print(f"年度管理费: {self.management_fee*100:.2f}% (每月扣除 {(self.management_fee/12)*100:.4f}%)")
 
         # 获取再平衡日期
         rebalance_dates = set(self.get_rebalance_dates())
@@ -361,7 +365,11 @@ class PortfolioBacktest:
         # 结果记录
         results = []
         total_contributions = 0.0
+        total_management_fees = 0.0  # 累计管理费
         self.trade_log = []  # 清空交易日志
+
+        # 月度管理费率（年费率的1/12）
+        monthly_fee_rate = self.management_fee / 12
 
         # ================================================================
         # 遍历每个月
@@ -473,7 +481,26 @@ class PortfolioBacktest:
                             holdings[ticker] = holdings.get(ticker, 0) + shares
 
             # ============================================================
-            # 步骤5：计算期末组合价值
+            # 步骤5：扣除月度管理费
+            # ============================================================
+            # 计算当前组合价值用于扣除管理费
+            current_portfolio_value = 0.0
+            for ticker in self.tickers:
+                if ticker in current_prices and pd.notna(current_prices[ticker]):
+                    current_portfolio_value += holdings[ticker] * current_prices[ticker]
+
+            # 扣除月度管理费（按资产净值比例）
+            if current_portfolio_value > 0 and monthly_fee_rate > 0:
+                management_fee = current_portfolio_value * monthly_fee_rate
+                total_management_fees += management_fee
+
+                # 按比例减少各资产持仓份额
+                fee_ratio = 1 - monthly_fee_rate
+                for ticker in self.tickers:
+                    holdings[ticker] = holdings[ticker] * fee_ratio
+
+            # ============================================================
+            # 步骤6：计算期末组合价值
             # ============================================================
             final_value = 0.0
             for ticker in self.tickers:
@@ -481,13 +508,14 @@ class PortfolioBacktest:
                     final_value += holdings[ticker] * current_prices[ticker]
 
             # ============================================================
-            # 步骤6：记录结果
+            # 步骤7：记录结果
             # ============================================================
             results.append({
                 'date': date,
                 'portfolio_value': final_value,
                 'contribution': contribution,
                 'total_contributions': total_contributions,
+                'total_management_fees': total_management_fees,
                 'rebalanced': is_rebalance_date
             })
 
@@ -498,6 +526,7 @@ class PortfolioBacktest:
         if verbose:
             print(f"\n回测完成！")
             print(f"总投入: ${total_contributions:,.0f}")
+            print(f"累计管理费: ${total_management_fees:,.0f}")
             print(f"期末价值: ${final_value:,.0f}")
             print(f"总收益: ${final_value - total_contributions:,.0f}")
 
@@ -522,6 +551,7 @@ class PortfolioBacktest:
         # 计算所有指标（包括XIRR）
         m = metrics.calculate_all_metrics(portfolio_values, returns, contributions)
         m['total_contributions'] = self.results['total_contributions'].iloc[-1]
+        m['total_management_fees'] = self.results['total_management_fees'].iloc[-1]
 
         return m
 
@@ -629,6 +659,7 @@ class PortfolioBacktest:
   每月投入: ${self.monthly_contribution:,.0f}
   再平衡频率: {self.rebalance_frequency}
   交易成本: {self.transaction_cost*100:.2f}%
+  年度管理费: {self.management_fee*100:.2f}%
 
 绩效指标:
   总收益率: {m['total_return']*100:.2f}%

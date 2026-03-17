@@ -84,7 +84,7 @@ st.markdown("""
 
 
 @st.cache_resource
-def run_backtest(allocation, start_date, initial_capital, monthly_contribution, rebalance_freq, transaction_cost):
+def run_backtest(allocation, start_date, initial_capital, monthly_contribution, rebalance_freq, transaction_cost, management_fee):
     """
     执行回测（带缓存）
 
@@ -97,6 +97,7 @@ def run_backtest(allocation, start_date, initial_capital, monthly_contribution, 
         monthly_contribution: 每月投入
         rebalance_freq: 再平衡频率
         transaction_cost: 交易成本
+        management_fee: 年度管理费率
 
     Returns:
         (回测引擎实例, 结果DataFrame)
@@ -107,7 +108,8 @@ def run_backtest(allocation, start_date, initial_capital, monthly_contribution, 
         initial_capital=initial_capital,
         monthly_contribution=monthly_contribution,
         rebalance_frequency=rebalance_freq,
-        transaction_cost=transaction_cost
+        transaction_cost=transaction_cost,
+        management_fee=management_fee
     )
     results = backtest.run_backtest(verbose=False)
     return backtest, results
@@ -433,6 +435,7 @@ def create_metrics_table(metrics):
         ['索提诺比率', f"{metrics['sortino_ratio']:.2f}"],
         ['卡玛比率', f"{metrics['calmar_ratio']:.2f}"],
         ['累计投入', f"${metrics['total_contributions']:,.0f}"],
+        ['累计管理费', f"${metrics.get('total_management_fees', 0):,.0f}"],
         ['期末价值', f"${metrics['final_value']:,.0f}"],
         ['总收益', f"${metrics['final_value'] - metrics['total_contributions']:,.0f}"],
     ]
@@ -525,6 +528,16 @@ def main():
         format="%.2f"
     ) / 100  # 转换为小数
 
+    # 年度管理费
+    management_fee = st.sidebar.number_input(
+        "年度管理费 (%)",
+        min_value=0.0,
+        max_value=5.0,
+        value=config.MANAGEMENT_FEE * 100,  # 默认 0.65%
+        step=0.05,
+        format="%.2f"
+    ) / 100  # 转换为小数
+
     # 运行按钮
     run_backtest_btn = st.sidebar.button("🚀 开始回测", type="primary")
 
@@ -540,7 +553,8 @@ def main():
                     initial_capital=initial_capital,
                     monthly_contribution=monthly_contribution,
                     rebalance_freq=rebalance_freq,
-                    transaction_cost=transaction_cost
+                    transaction_cost=transaction_cost,
+                    management_fee=management_fee
                 )
                 st.session_state['backtest'] = backtest
                 st.session_state['results'] = results
@@ -678,13 +692,15 @@ def main():
             display_df['portfolio_value_fmt'] = display_df['portfolio_value'].apply(format_currency)
             display_df['contribution_fmt'] = display_df['contribution'].apply(format_currency)
             display_df['total_contributions_fmt'] = display_df['total_contributions'].apply(format_currency)
+            display_df['total_management_fees_fmt'] = display_df['total_management_fees'].apply(format_currency)
 
             st.dataframe(
-                display_df[['portfolio_value_fmt', 'contribution_fmt', 'total_contributions_fmt', 'rebalanced']].rename(
+                display_df[['portfolio_value_fmt', 'contribution_fmt', 'total_contributions_fmt', 'total_management_fees_fmt', 'rebalanced']].rename(
                     columns={
                         'portfolio_value_fmt': '组合价值',
                         'contribution_fmt': '当月投入',
                         'total_contributions_fmt': '累计投入',
+                        'total_management_fees_fmt': '累计管理费',
                         'rebalanced': '是否再平衡'
                     }
                 ),
@@ -754,6 +770,15 @@ def main():
         st.header("方法论说明")
 
         st.markdown("""
+        ### 价格数据与红利再投资
+
+        本系统使用 yfinance 获取的 **调整后收盘价 (Adj Close)** 进行回测。
+        调整后收盘价已自动包含以下因素：
+        - **红利再投资**：分红已自动按除息日价格再投资
+        - **股票分割调整**：拆股已自动调整价格
+
+        因此，回测结果已自动反映红利再投资的复利效应。
+
         ### 价格缩放方法
 
         当ETF成立时间晚于回测开始日期时，系统使用代理数据进行回溯填充。

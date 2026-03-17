@@ -43,3 +43,7 @@ PROXY_MAPPING = {
 
 # Risk-free rate for Sharpe/Sortino calculations (annualized)
 RISK_FREE_RATE = 0.02  # 2% annual
+
+# Annual management fee rate (0.65% per year)
+# Deducted monthly as 1/12 of annual rate
+MANAGEMENT_FEE = 0.0065  # 0.65% annual management fee
